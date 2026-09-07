@@ -1,11 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import './App.css';
-import { generatePuzzle, isValid } from './utils/sudokuLogic';
+import { generatePuzzle } from './utils/sudokuLogic';
 
-function SudokuCell({ value, isInitial, isSelected, isError, onClick }) {
+function SudokuCell({ value, isInitial, isSelected, isError, onClick, row, col }) {
+  const subgridIndex = Math.floor(row / 3) * 3 + Math.floor(col / 3);
   return (
     <div
       className={`sudoku-cell ${isInitial ? 'prefilled' : ''} ${isSelected ? 'selected' : ''} ${isError ? 'error' : ''}`}
+      data-subgrid={subgridIndex % 2}
+      data-row={row}
+      data-col={col}
       onClick={onClick}
     >
       {value !== 0 ? value : ''}
@@ -19,7 +23,7 @@ function NumberPad({ onNumberClick }) {
       {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(num => (
         <button key={num} onClick={() => onNumberClick(num)}>{num}</button>
       ))}
-      <button onClick={() => onNumberClick(0)}>Clear</button>
+      <button className="clear-button" onClick={() => onNumberClick(0)}>Clear</button>
     </div>
   );
 }
@@ -31,42 +35,9 @@ function App() {
   const [selectedCell, setSelectedCell] = useState(null); // {row, col}
   const [difficulty, setDifficulty] = useState('easy');
   const [gameStatus, setGameStatus] = useState('playing'); // 'playing', 'won', 'error'
+  const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    startNewGame();
-  }, []);
-
-  const startNewGame = () => {
-    const { puzzle, solution } = generatePuzzle(difficulty);
-    setBoard(puzzle.map(row => [...row]));
-    setInitialBoard(puzzle.map(row => [...row]));
-    setSolution(solution.map(row => [...row]));
-    setSelectedCell(null);
-    setGameStatus('playing');
-  };
-
-  const handleCellClick = (row, col) => {
-    setSelectedCell({ row, col });
-  };
-
-  const handleNumberInput = (num) => {
-    if (!selectedCell) return;
-    const { row, col } = selectedCell;
-
-    // Prevent editing initial cells
-    if (initialBoard[row][col] !== 0) return;
-
-    const newBoard = board.map(r => [...r]);
-    newBoard[row][col] = num;
-    setBoard(newBoard);
-
-    // Check if game is won
-    if (checkWin(newBoard)) {
-      setGameStatus('won');
-    }
-  };
-
-  const checkWin = (currentBoard) => {
+  const checkWin = useCallback((currentBoard) => {
     for (let r = 0; r < 9; r++) {
       for (let c = 0; c < 9; c++) {
         if (currentBoard[r][c] === 0 || currentBoard[r][c] !== solution[r][c]) {
@@ -75,6 +46,55 @@ function App() {
       }
     }
     return true;
+  }, [solution]);
+
+  const startNewGame = useCallback(() => {
+    setIsLoading(true);
+    // Use setTimeout to allow the UI to render the loading state before heavy computation
+    setTimeout(() => {
+      const { puzzle, solution: solvedBoard } = generatePuzzle(difficulty);
+      setBoard(puzzle.map(row => [...row]));
+      setInitialBoard(puzzle.map(row => [...row]));
+      setSolution(solvedBoard.map(row => [...row]));
+      setSelectedCell(null);
+      setGameStatus('playing');
+      setIsLoading(false);
+    }, 10);
+  }, [difficulty]);
+
+  const handleNumberInput = useCallback((num) => {
+    if (!selectedCell) return;
+    const { row, col } = selectedCell;
+
+    if (initialBoard[row][col] !== 0) return;
+
+    const newBoard = board.map(r => [...r]);
+    newBoard[row][col] = num;
+    setBoard(newBoard);
+
+    if (checkWin(newBoard)) {
+      setGameStatus('won');
+    }
+  }, [selectedCell, initialBoard, board, checkWin]);
+
+  useEffect(() => {
+    startNewGame();
+  }, [startNewGame]);
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key >= '1' && e.key <= '9') {
+        handleNumberInput(parseInt(e.key));
+      } else if (e.key === 'Backspace' || e.key === 'Delete') {
+        handleNumberInput(0);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleNumberInput]);
+
+  const handleCellClick = (row, col) => {
+    setSelectedCell({ row, col });
   };
 
   const checkBoard = () => {
@@ -95,36 +115,37 @@ function App() {
     setGameStatus('playing');
   };
 
-  // Keyboard support
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (e.key >= '1' && e.key <= '9') {
-        handleNumberInput(parseInt(e.key));
-      } else if (e.key === 'Backspace' || e.key === 'Delete') {
-        handleNumberInput(0);
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedCell, board, initialBoard]);
+  if (isLoading) {
+    return (
+      <div className="loading-container">
+        <div className="loader"></div>
+        <p>Generating Puzzle...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="sudokuAIApp">
-      <h1>Sudoku AI</h1>
+      <h1 className="app-title">Sudoku AI</h1>
 
       <div className="game-controls">
-        <select value={difficulty} onChange={(e) => setDifficulty(e.target.value)}>
-          <option value="easy">Easy</option>
-          <option value="medium">Medium</option>
-          <option value="hard">Hard</option>
-        </select>
-        <button onClick={startNewGame}>New Game</button>
-        <button onClick={checkBoard}>Check</button>
-        <button onClick={solveGame}>Solve</button>
+        <div className="control-group">
+          <label htmlFor="difficulty-select">Difficulty:</label>
+          <select id="difficulty-select" value={difficulty} onChange={(e) => setDifficulty(e.target.value)}>
+            <option value="easy">Easy</option>
+            <option value="medium">Medium</option>
+            <option value="hard">Hard</option>
+          </select>
+        </div>
+        <div className="button-group">
+          <button className="btn-primary" onClick={startNewGame}>New Game</button>
+          <button className="btn-secondary" onClick={checkBoard}>Check</button>
+          <button className="btn-secondary" onClick={solveGame}>Solve</button>
+        </div>
       </div>
 
-      {gameStatus === 'won' && <div className="status-message won">Congratulations! You solved the puzzle!</div>}
-      {gameStatus === 'error' && <div className="status-message error">Some entries are incorrect. Keep trying!</div>}
+      {gameStatus === 'won' && <div className="status-message won">🎉 Congratulations! You solved the puzzle!</div>}
+      {gameStatus === 'error' && <div className="status-message error">❌ Some entries are incorrect. Keep trying!</div>}
 
       <div className="sudoku-grid">
         {board.map((row, rIdx) => (
@@ -132,6 +153,8 @@ function App() {
             {row.map((val, cIdx) => (
               <SudokuCell
                 key={cIdx}
+                row={rIdx}
+                col={cIdx}
                 value={val}
                 isInitial={initialBoard[rIdx][cIdx] !== 0}
                 isSelected={selectedCell?.row === rIdx && selectedCell?.col === cIdx}
