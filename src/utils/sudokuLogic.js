@@ -67,17 +67,20 @@ export function solveSudoku(board) {
 export function countSolutions(board, limit = 2) {
   let solutions = 0;
 
+  // Copy board to avoid mutating original
+  const boardCopy = board.map(row => [...row]);
+
   function backtrack() {
     if (solutions >= limit) return;
 
     for (let row = 0; row < 9; row++) {
       for (let col = 0; col < 9; col++) {
-        if (board[row][col] === 0) {
+        if (boardCopy[row][col] === 0) {
           for (let num = 1; num <= 9; num++) {
-            if (isValid(board, row, col, num)) {
-              board[row][col] = num;
+            if (isValid(boardCopy, row, col, num)) {
+              boardCopy[row][col] = num;
               backtrack();
-              board[row][col] = 0;
+              boardCopy[row][col] = 0;
             }
           }
           return;
@@ -87,8 +90,6 @@ export function countSolutions(board, limit = 2) {
     solutions++;
   }
 
-  // Copy board to avoid mutating original
-  const boardCopy = board.map(row => [...row]);
   backtrack();
   return solutions;
 }
